@@ -4,6 +4,12 @@ const sizePattern = String.raw`(?:[A-Za-z_]\w*|len\([A-Za-z_]\w*\)|[A-Za-z_$][\w
 const sizeExpression = new RegExp("^" + sizePattern + "$");
 const constant = /^-?\d+$/;
 const typedVariable = "(?:(?:[A-Za-z_]\\w*\\s+)*[A-Za-z_]\\w*(?:\\s*\\[\\s*\\])*\\s+)?";
+const fixedOutputCalls = {
+  c: /^(?:printf\s*\(\s*""\s*\)|puts\s*\(\s*"%?"\s*\))$/,
+  python: /^print\s*\(\s*[+-]?\d+\s*\)$/,
+  javascript: /^console\.log\s*\(\s*[+-]?\d+\s*\)$/,
+  java: /^System\.out\.print(?:ln)?\s*\(\s*[+-]?\d+\s*\)$/,
+};
 const types = {
   "1": "定数時間",
   "log n": "対数時間",
@@ -240,9 +246,8 @@ function estimateComplexity(code, language) {
             unknown("この構文の処理量を特定できません。", line);
           }
           const sort = language === "python" && text.match(/^(?:(?:return\s+|\w+\s*=\s*)?sorted\(\s*(\w+)\s*\)|(\w+)\.sort\(\s*\))$/);
-          const fixedOutput = language === "c" && /^(?:printf\s*\(\s*""\s*\)|puts\s*\(\s*"%?"\s*\))$/.test(text);
-          if (fixedOutput) {
-            reasons.push(line + " 行目は固定長の文字列を出力するので O(1) です。");
+          if (fixedOutputCalls[language].test(text)) {
+            reasons.push(line + " 行目は決まった値を出力するので、入力サイズに対して O(1) です。");
           } else if (sort) {
             inputSize(sort[1] || sort[2], line);
             cost = { polynomial: 1, logarithmic: 1 };
