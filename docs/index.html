@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Python と JavaScript のコードから時間計算量を推定するブラウザツール。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Big O Lab — 計算量チェッカー</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="analyzer.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="shell bar-inner"><div class="brand"><span class="mark" aria-hidden="true">∿</span> Big O Lab</div><span class="local">● ブラウザ内で解析</span></div>
+  </header>
+  <main class="shell">
+    <section class="hero" aria-labelledby="title">
+      <div class="eyebrow">ALGORITHM TOOLKIT <span>/</span> 01</div>
+      <h1 id="title">計算量チェッカー<span>.</span></h1>
+      <p>コードを貼り付けると、入力が増えたときに処理量がどう増えるか、Big O 表記で推定します。</p>
+    </section>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="input-title">
+        <div class="panel-head"><h2 id="input-title"><span>01</span> コード入力</h2>
+          <label for="language" class="sr">プログラミング言語</label>
+          <select id="language"><option value="python">Python</option><option value="javascript">JavaScript</option></select>
+        </div>
+        <form id="analysis">
+          <div class="samples" aria-label="サンプルコード">
+            <span>サンプル</span>
+            <button type="button" data-example="linear">O(n)</button>
+            <button type="button" data-example="quadratic">O(n²)</button>
+            <button type="button" data-example="linearithmic">O(n log n)</button>
+          </div>
+          <label for="code" class="sr">解析するコード</label>
+          <textarea id="code" required maxlength="20000" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="ここにコードを貼り付けてください"></textarea>
+          <div class="form-footer"><button class="primary" type="submit">計算量を推定 <span aria-hidden="true">↗</span></button><button class="clear" type="button" id="clear">クリア</button></div>
+        </form>
+      </section>
+      <section class="panel result-panel" aria-labelledby="output-title">
+        <div class="panel-head"><h2 id="output-title"><span>02</span> 解析結果</h2><span class="tag">時間計算量</span></div>
+        <div class="result" id="result" role="status">
+          <div id="notation" class="notation">O( ? )</div>
+          <p id="type" class="type">コードの入力を待っています</p>
+          <p id="summary">推定ボタンを押すと、計算量の種類と判断の根拠がここに表示されます。</p>
+          <ul id="reasons" hidden></ul>
+        </div>
+      </section>
+    </div>
+    <section class="guide" aria-label="計算量の例">
+      <div><b>O(1)</b><span>定数時間</span></div>
+      <div><b>O(log n)</b><span>対数時間</span></div>
+      <div><b>O(n)</b><span>線形時間</span></div>
+      <div><b>O(n log n)</b><span>線形対数時間</span></div>
+      <div><b>O(n²)</b><span>二乗時間</span></div>
+    </section>
+    <footer>n は入力サイズです。ループが上限まで進む場合の目安を示します。貼り付けたコードはブラウザ内で読み取り、実行や送信は行いません。</footer>
+  </main>
+</body>
+</html>
