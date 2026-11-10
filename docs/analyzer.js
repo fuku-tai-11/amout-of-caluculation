@@ -24,6 +24,12 @@ function mask(code, language) {
     : /"(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
   return code.replace(tokens, (token) => {
     const space = token.replace(/[^\n]/g, " ");
+    if (language === "c" && token.startsWith('"')) {
+      // Keep a marker for fixed strings without exposing their contents to the parser.
+      const hasFormat = /%|\\[x0-7uU]/.test(token.replace(/%%/g, ""));
+      const marker = hasFormat ? '"%"' : '""';
+      return marker + space.slice(marker.length);
+    }
     return /^["']/.test(token) ? "0" + space.slice(1) : space;
   });
 }
@@ -179,7 +185,7 @@ function estimateComplexity(code, language) {
     if (code.length > 20000) unknown("20,000 文字以内のコードを入力してください。");
     if (!["python", "javascript", "c", "java"].includes(language)) unknown("対応言語を選択してください。");
     let source = code.replace(/\r\n?/g, "\n");
-    if (language === "c") source = source.replace(/^[ \t]*#[ \t]*include[ \t]+(?:<[^>\n]+>|"[^"\n]+")[ \t]*$/gm, "");
+    if (language === "c") source = source.replace(/^[ \t]*#[ \t]*include[ \t]*(?:<[^>\n]+>|"[^"\n]+")[ \t]*$/gm, "");
     const cleaned = mask(source, language);
     if (language === "javascript" && cleaned.includes(String.fromCharCode(96))) unknown("テンプレートリテラルに対応していません。");
     let nodes = language === "python" ? pythonStatements(cleaned) : braceStatements(cleaned, language);
@@ -234,7 +240,10 @@ function estimateComplexity(code, language) {
             unknown("この構文の処理量を特定できません。", line);
           }
           const sort = language === "python" && text.match(/^(?:(?:return\s+|\w+\s*=\s*)?sorted\(\s*(\w+)\s*\)|(\w+)\.sort\(\s*\))$/);
-          if (sort) {
+          const fixedOutput = language === "c" && /^(?:printf\s*\(\s*""\s*\)|puts\s*\(\s*"%?"\s*\))$/.test(text);
+          if (fixedOutput) {
+            reasons.push(line + " 行目は固定長の文字列を出力するので O(1) です。");
+          } else if (sort) {
             inputSize(sort[1] || sort[2], line);
             cost = { polynomial: 1, logarithmic: 1 };
             reasons.push(line + " 行目は Python のソートです。要素比較を定数時間と仮定します。");
