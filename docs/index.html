@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Python と JavaScript のコードから時間計算量を推定するブラウザツール。">
+  <meta name="description" content="Python・JavaScript・C 言語・Java のコードから時間計算量を推定するブラウザツール。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Big O Lab — 計算量チェッカー</title>
   <link rel="stylesheet" href="style.css">
@@ -24,7 +24,12 @@
       <section class="panel" aria-labelledby="input-title">
         <div class="panel-head"><h2 id="input-title"><span>01</span> コード入力</h2>
           <label for="language" class="sr">プログラミング言語</label>
-          <select id="language"><option value="python">Python</option><option value="javascript">JavaScript</option></select>
+          <select id="language">
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="c">C 言語</option>
+            <option value="java">Java</option>
+          </select>
         </div>
         <form id="analysis">
           <div class="samples" aria-label="サンプルコード">

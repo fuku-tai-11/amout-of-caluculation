@@ -2,8 +2,8 @@
 
 const sizePattern = String.raw`(?:[A-Za-z_]\w*|len\([A-Za-z_]\w*\)|[A-Za-z_$][\w$]*\.length)`;
 const sizeExpression = new RegExp("^" + sizePattern + "$");
-const identifier = /^[A-Za-z_$][\w$]*$/;
 const constant = /^-?\d+$/;
+const typedVariable = "(?:(?:[A-Za-z_]\\w*\\s+)*[A-Za-z_]\\w*(?:\\s*\\[\\s*\\])*\\s+)?";
 const types = {
   "1": "定数時間",
   "log n": "対数時間",
@@ -54,9 +54,10 @@ function pythonStatements(code) {
   return root.children;
 }
 
-function javascriptStatements(code) {
+function braceStatements(code, language) {
   const root = [];
   const stack = [root];
+  const typed = language === "c" || language === "java";
   let buffer = "";
   let line = 1;
   let start = 1;
@@ -75,16 +76,23 @@ function javascriptStatements(code) {
     if (depth < 0) unknown("括弧の対応を確認してください。", line);
     if (char === "{" && depth === 0) {
       const node = flush();
-      if (!node || !/^(?:function\b|(?:for|while|if|else if)\s*\(|else$)/.test(node.text)) {
-        unknown("この形式のブロックに対応していません。", line);
+      if (!node) unknown("この形式のブロックに対応していません。", line);
+      if (/^(?:(?:for|while|if|else\s+if)\s*\(|else$)/.test(node.text)) {
+        node.block = true;
+      } else if (language === "java" && /^(?:(?:public|final|abstract)\s+)*class\s+\w+$/.test(node.text)) {
+        node.kind = "class";
+      } else if (typed ? /^(?:\w+\s+)+[\w\s*\[\]]*\b\w+\s*\([^()]*\)$/.test(node.text)
+                       : /^function\b/.test(node.text)) {
+        node.kind = "function";
+      } else {
+        unknown("この形式のブロックに対応していません。", node.line);
       }
-      node.block = true;
       stack.push(node.children);
     } else if (char === "}" && depth === 0) {
       flush();
       if (stack.length === 1) unknown("波括弧の対応を確認してください。", line);
       stack.pop();
-    } else if (depth === 0 && (char === ";" || (char === "\n" && !/^(?:function\b|for\b|while\b|if\b|else\b)/.test(buffer.trim())))) {
+    } else if (depth === 0 && (char === ";" || (!typed && char === "\n" && !/^(?:function\b|for\b|while\b|if\b|else\b)/.test(buffer.trim())))) {
       flush();
     } else {
       if (!buffer.trim()) start = line;
@@ -129,25 +137,35 @@ function loopCost(node, language) {
       }
     }
   } else if (node.block) {
-    const iterable = node.text.match(/^for\s*\(\s*(?:let|const|var)\s+\w+\s+of\s+(\w+)\s*\)$/);
+    const typed = language === "c" || language === "java";
+    const iterable = language === "java"
+      ? node.text.match(/^for\s*\(\s*(?:final\s+)?\w+\s+\w+\s*:\s*(\w+)\s*\)$/)
+      : language === "javascript" && node.text.match(/^for\s*\(\s*(?:let|const|var)\s+\w+\s+of\s+(\w+)\s*\)$/);
     if (iterable) return { bound: iterable[1] };
-    const loop = node.text.match(/^for\s*\(\s*(?:let|var)\s+(\w+)\s*=\s*(\d+)\s*;\s*(\w+)\s*<=?\s*([^;]+);\s*([^)]+)\)$/);
+    const declaration = typed ? typedVariable : "(?:let|var)\\s+";
+    const loop = node.text.match(new RegExp("^for\\s*\\(\\s*" + declaration
+      + "(\\w+)\\s*=\\s*(\\d+)\\s*;\\s*(\\w+)\\s*<=?\\s*([^;]+);\\s*([^)]+)\\)$"));
     if (loop && loop[1] === loop[3]) {
       const [, variable, initial, , bound, rawUpdate] = loop;
       const update = rawUpdate.replace(/\s/g, "");
-      if ([variable + "++", "++" + variable, variable + "+=1"].includes(update)) {
+      const increment = new RegExp("^" + variable + "(?:\\+=|=" + variable + "\\+)[1-9]\\d*$");
+      if ([variable + "++", "++" + variable].includes(update) || increment.test(update)) {
         return { bound: bound.replace(/\s/g, "") };
       }
-      if (Number(initial) > 0 && new RegExp("^" + variable + "\\*=([2-9]|[1-9]\\d+)$").test(update)) {
+      const multiply = new RegExp("^" + variable + "(?:\\*=|=" + variable + "\\*)(?:[2-9]|[1-9]\\d+)$");
+      if (Number(initial) > 0 && multiply.test(update)) {
         return { bound: bound.replace(/\s/g, ""), logarithmic: true };
       }
     }
-    const condition = statement.match(/^while\((\w+)>[01]\)$/);
+    const condition = statement.match(/^while\((\w+)(?:>[01]|>=1)\)$/);
     if (condition) {
       const variable = condition[1];
       const update = node.children.at(-1)?.text.replace(/\s/g, "");
-      if (update === variable + "--" || update === variable + "-=1") return { bound: variable, shrinking: true };
-      if (update === variable + ">>=1" || update === variable + "=Math.floor(" + variable + "/2)") {
+      if ([variable + "--", "--" + variable, variable + "-=1", variable + "=" + variable + "-1"].includes(update)) {
+        return { bound: variable, shrinking: true };
+      }
+      const divide = new RegExp("^" + variable + "(?:/=|=" + variable + "/)(?:[2-9]|[1-9]\\d+)$");
+      if (update === variable + ">>=1" || (typed ? divide.test(update) : update === variable + "=Math.floor(" + variable + "/2)")) {
         return { bound: variable, logarithmic: true, shrinking: true };
       }
     }
@@ -159,13 +177,20 @@ function estimateComplexity(code, language) {
   try {
     if (!code.trim()) unknown("コードを入力してください。");
     if (code.length > 20000) unknown("20,000 文字以内のコードを入力してください。");
-    if (!["python", "javascript"].includes(language)) unknown("対応言語を選択してください。");
-    const cleaned = mask(code.replace(/\r\n?/g, "\n"), language);
+    if (!["python", "javascript", "c", "java"].includes(language)) unknown("対応言語を選択してください。");
+    let source = code.replace(/\r\n?/g, "\n");
+    if (language === "c") source = source.replace(/^[ \t]*#[ \t]*include[ \t]+(?:<[^>\n]+>|"[^"\n]+")[ \t]*$/gm, "");
+    const cleaned = mask(source, language);
     if (language === "javascript" && cleaned.includes(String.fromCharCode(96))) unknown("テンプレートリテラルに対応していません。");
-    const nodes = language === "python" ? pythonStatements(cleaned) : javascriptStatements(cleaned);
+    let nodes = language === "python" ? pythonStatements(cleaned) : braceStatements(cleaned, language);
+    if (language === "java") {
+      nodes = nodes.filter(({ text }) => !/^(?:package|import(?:\s+static)?)\s+\w+(?:\.(?:\w+|\*))*$/.test(text));
+      if (nodes.length === 1 && nodes[0].kind === "class") nodes = nodes[0].children;
+    }
     if (!nodes.length) unknown("処理を含むコードを入力してください。");
-    const functions = nodes.filter(({ text }) => /^(?:def|function)\s/.test(text));
-    if (functions.length && nodes.length !== 1) unknown("関数を解析する場合は、1 つの関数だけを入力してください。");
+    const isFunction = (node) => node.kind === "function" || (language === "python" && /^def\s/.test(node.text));
+    if (nodes.some(isFunction) && nodes.length !== 1) unknown("解析する関数またはメソッドを 1 つだけ入力してください。");
+    const initializerPattern = new RegExp("^" + typedVariable + "(\\w+)\\s*=\\s*(.+)$");
     const reasons = [];
     const sizes = new Set();
     const inputSize = (bound, line) => {
@@ -187,7 +212,7 @@ function estimateComplexity(code, language) {
           const loop = loopCost(node, language);
           let bound = loop.bound;
           if (loop.shrinking) {
-            const initializer = items[index - 1]?.text.match(/^(?:(?:let|var)\s+)?(\w+)\s*=\s*(.+)$/);
+            const initializer = items[index - 1]?.text.match(initializerPattern);
             if (initializer?.[1] === bound) bound = initializer[2].replace(/\s/g, "");
           }
           const variableSize = inputSize(bound, line);
@@ -199,11 +224,12 @@ function estimateComplexity(code, language) {
           cost = visit(children, depth + 1);
           cost.polynomial += factor.polynomial;
           cost.logarithmic += factor.logarithmic;
-        } else if (/^(?:def|function)\s/.test(text)) {
+        } else if (isFunction(node)) {
           if (depth || !children.length) unknown("関数の定義を確認してください。", line);
           cost = visit(children, depth + 1);
         } else {
-          if (/^(?:break|continue|yield|import|from|class|try|catch|switch|with|async|await|do|throw|raise)\b/.test(text)
+          if (node.kind || /^#/.test(text)
+              || /^(?:break|continue|yield|import|from|class|try|catch|switch|with|async|await|do|throw|raise|goto)\b/.test(text)
               || /=>|\bnew\b|\[[^\]]*\bfor\b|\b(?:for|while)\b|[^:]\[[^\]]*:[^\]]*\]/.test(text)) {
             unknown("この構文の処理量を特定できません。", line);
           }
@@ -215,7 +241,7 @@ function estimateComplexity(code, language) {
           } else {
             const withoutScalarCalls = text.replace(/\blen\(\s*\w+\s*\)/g, "0")
               .replace(/\bMath\.floor\(\s*\w+\s*\/\s*2\s*\)/g, "0")
-              .replace(/^(?:if|else if)\s*(?=\()/, "");
+              .replace(/^(?:if|else\s+if)\s*(?=\()/, "");
             if (/(?:[\w$]|\]|\))\s*\(/.test(withoutScalarCalls)) unknown("関数呼び出しや再帰の処理量を特定できません。", line);
             if (/^(?:if|elif|else)\b/.test(text)) {
               if (!children.length) unknown("条件分岐の本体をブロックで囲んでください。", line);
