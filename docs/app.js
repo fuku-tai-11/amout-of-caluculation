@@ -50,11 +50,21 @@ function render(result) {
 }
 
 function analyze() {
-  render(estimateComplexity(code.value, language.value));
+  let source = code.value;
+  if (language.value === "c") {
+    // A closing brace followed by a full-width space can separate a copied chat annotation.
+    source = source.replace(/(^|\n)([ \t]*\})　+[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}][\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー、。！？!? \t　]*\s*$/u, "$1$2");
+  }
+  const result = estimateComplexity(source, language.value);
+  if (source !== code.value) result.summary += " 末尾の説明文を除いて解析しました。";
+  render(result);
 }
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (/^\s*#[ \t]*include[ \t]*(?:<[^>\r\n]+>|"[^"\r\n]+")[ \t]*(?:\r?\n|$)/.test(code.value)) {
+    language.value = "c";
+  }
   analyze();
 });
 code.addEventListener("input", () => {
